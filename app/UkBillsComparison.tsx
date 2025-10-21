@@ -1,5 +1,6 @@
 "use client";
 
+import { supabase } from "../lib/supabaseClient";
 import React, { useState, useEffect } from 'react';
 import { Search, Upload, Zap, Droplets, Wifi, Flame, AlertTriangle, Clock, X } from 'lucide-react';
 
@@ -27,28 +28,109 @@ export default function UKBillsComparison() {
 
   useEffect(() => { loadAllData(); }, []);
 
+  // const loadAllData = async () => {
+  //   try {
+  //     const keys = await window.storage.list('bill:');
+  //     if (keys && keys.keys) {
+  //       const dataPromises = keys.keys.map(async (key) => {
+  //         try {
+  //           const result = await window.storage.get(key);
+  //           if (result) {
+  //             const data = JSON.parse(result.value);
+  //             data.storageKey = key;
+  //             return data;
+  //           }
+  //           return null;
+  //         } catch { return null; }
+  //       });
+  //       const data = (await Promise.all(dataPromises)).filter(d => d !== null);
+  //       setAllData(data);
+  //     }
+  //   } catch (error) {
+  //     setAllData([]);
+  //   }
+  // };
   const loadAllData = async () => {
-    try {
-      const keys = await window.storage.list('bill:');
-      if (keys && keys.keys) {
-        const dataPromises = keys.keys.map(async (key) => {
-          try {
-            const result = await window.storage.get(key);
-            if (result) {
-              const data = JSON.parse(result.value);
-              data.storageKey = key;
-              return data;
-            }
-            return null;
-          } catch { return null; }
-        });
-        const data = (await Promise.all(dataPromises)).filter(d => d !== null);
-        setAllData(data);
-      }
-    } catch (error) {
+    // 只取计数，不把整表搬到前端
+    const { count, error } = await supabase
+      .from("bills")
+      .select("*", { count: "exact", head: true });
+
+    if (error) {
+      console.error(error);
       setAllData([]);
+      return;
     }
+    // 你页面底部要显示 allData.length，所以这里构造一个“长度数组”
+    setAllData(Array.from({ length: count ?? 0 }));
   };
+
+  // 把 Supabase 行 → 映射成你原来前端在用的字段命名
+  const mapRowToFront = (r: any) => ({
+    id: r.id,
+    postcode: r.postcode,
+    bedrooms: String(r.bedrooms),
+    people: String(r.people),
+    costType: r.cost_type, // 'total' | 'perPerson'
+    // 费用字段（可能为 null，用 undefined 过滤）
+    electricityCost: r.electricity_cost ?? undefined,
+    waterCost: r.water_cost ?? undefined,
+    broadbandCost: r.broadband_cost ?? undefined,
+    gasCost: r.gas_cost ?? undefined,
+    electricityProvider: r.electricity_provider ?? "",
+    waterProvider: r.water_provider ?? "",
+    broadbandProvider: r.broadband_provider ?? "",
+    gasProvider: r.gas_provider ?? "",
+    // 供“最近更新时间”使用
+    timestamp: r.created_at ? new Date(r.created_at).getTime() : undefined,
+  });
+
+  const fetchByStrategy = async (
+    strategy: "exact" | "flexible-same-area" | "nearby" | "flexible-nearby",
+    prefix: string,
+    area: string,
+    bedrooms: number,
+    people: number
+  ) => {
+    const bMin = bedrooms - 1, bMax = bedrooms + 1;
+    const pMin = people - 1, pMax = people + 1;
+
+    if (strategy === "exact") {
+      return supabase
+        .from("bills")
+        .select("*")
+        .eq("postcode_prefix", prefix)
+        .eq("bedrooms", bedrooms)
+        .eq("people", people);
+    }
+
+    if (strategy === "flexible-same-area") {
+      return supabase
+        .from("bills")
+        .select("*")
+        .eq("postcode_prefix", prefix)
+        .gte("bedrooms", bMin).lte("bedrooms", bMax)
+        .gte("people", pMin).lte("people", pMax);
+    }
+
+    if (strategy === "nearby") {
+      return supabase
+        .from("bills")
+        .select("*")
+        .eq("postcode_area", area)
+        .eq("bedrooms", bedrooms)
+        .eq("people", people);
+    }
+
+    // flexible-nearby
+    return supabase
+      .from("bills")
+      .select("*")
+      .eq("postcode_area", area)
+      .gte("bedrooms", bMin).lte("bedrooms", bMax)
+      .gte("people", pMin).lte("people", pMax);
+  };
+
 
   const validateCost = (field, value) => {
     if (!value || value === '') return true;
@@ -67,170 +149,364 @@ export default function UKBillsComparison() {
     return 'Today';
   };
 
+  // const handleSearch = async () => {
+  //   if (!searchData.postcode || !searchData.bedrooms || !searchData.people) {
+  //     alert('Please fill in all search fields');
+  //     return;
+  //   }
+
+  //   setLoading(true);
+  //   const postcodePrefix = searchData.postcode.trim().toUpperCase().split(' ')[0];
+  //   const searchBedrooms = parseInt(searchData.bedrooms);
+  //   const searchPeople = parseInt(searchData.people);
+    
+  //   let filtered = allData.filter(item => {
+  //     const itemPostcodePrefix = item.postcode.trim().toUpperCase().split(' ')[0];
+  //     return itemPostcodePrefix === postcodePrefix && parseInt(item.bedrooms) === searchBedrooms && parseInt(item.people) === searchPeople;
+  //   });
+  //   let matchType = 'exact';
+
+  //   if (filtered.length === 0) {
+  //     filtered = allData.filter(item => {
+  //       const itemPostcodePrefix = item.postcode.trim().toUpperCase().split(' ')[0];
+  //       const bedroomMatch = Math.abs(parseInt(item.bedrooms) - searchBedrooms) <= 1;
+  //       const peopleMatch = Math.abs(parseInt(item.people) - searchPeople) <= 1;
+  //       return itemPostcodePrefix === postcodePrefix && bedroomMatch && peopleMatch;
+  //     });
+  //     matchType = 'flexible-same-area';
+  //   }
+
+  //   if (filtered.length === 0) {
+  //     const postcodeArea = postcodePrefix.replace(/\d+$/, '');
+  //     filtered = allData.filter(item => {
+  //       const itemPostcodePrefix = item.postcode.trim().toUpperCase().split(' ')[0];
+  //       const itemPostcodeArea = itemPostcodePrefix.replace(/\d+$/, '');
+  //       return itemPostcodeArea === postcodeArea && parseInt(item.bedrooms) === searchBedrooms && parseInt(item.people) === searchPeople;
+  //     });
+  //     matchType = 'nearby';
+  //   }
+
+  //   if (filtered.length === 0) {
+  //     const postcodeArea = postcodePrefix.replace(/\d+$/, '');
+  //     filtered = allData.filter(item => {
+  //       const itemPostcodePrefix = item.postcode.trim().toUpperCase().split(' ')[0];
+  //       const itemPostcodeArea = itemPostcodePrefix.replace(/\d+$/, '');
+  //       const bedroomMatch = Math.abs(parseInt(item.bedrooms) - searchBedrooms) <= 1;
+  //       const peopleMatch = Math.abs(parseInt(item.people) - searchPeople) <= 1;
+  //       return itemPostcodeArea === postcodeArea && bedroomMatch && peopleMatch;
+  //     });
+  //     matchType = 'flexible-nearby';
+  //   }
+
+  //   if (filtered.length === 0) {
+  //     setResults({ count: 0, message: 'No data found for these criteria. Be the first to contribute!' });
+  //   } else {
+  //     const calculateStats = (field) => {
+  //       const values = filtered.map(item => {
+  //         const cost = parseFloat(item[field]) || 0;
+  //         return item.costType === 'perPerson' ? cost * parseInt(item.people) : cost;
+  //       }).filter(v => v > 0);
+  //       if (values.length === 0) return null;
+  //       const sum = values.reduce((a, b) => a + b, 0);
+  //       return { avg: sum / values.length, min: Math.min(...values), max: Math.max(...values), count: values.length };
+  //     };
+
+  //     const getProviders = (field) => {
+  //       const providers = filtered.map(item => item[field]).filter(p => p && p.trim() !== '');
+  //       const counts = {};
+  //       providers.forEach(p => counts[p] = (counts[p] || 0) + 1);
+  //       return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, count]) => ({ name, count }));
+  //     };
+
+  //     const getMostRecentTimestamp = () => {
+  //       const timestamps = filtered.map(item => item.timestamp).filter(t => t);
+  //       return timestamps.length > 0 ? Math.max(...timestamps) : null;
+  //     };
+
+  //     const elec = calculateStats('electricityCost');
+  //     const water = calculateStats('waterCost');
+  //     const broad = calculateStats('broadbandCost');
+  //     const gas = calculateStats('gasCost');
+
+  //     setResults({
+  //       count: filtered.length, matchType, mostRecent: getMostRecentTimestamp(),
+  //       stats: { electricity: elec, water: water, broadband: broad, gas: gas },
+  //       providers: {
+  //         electricity: getProviders('electricityProvider'), water: getProviders('waterProvider'),
+  //         broadband: getProviders('broadbandProvider'), gas: getProviders('gasProvider')
+  //       },
+  //       total: (elec?.avg || 0) + (water?.avg || 0) + (broad?.avg || 0) + (gas?.avg || 0),
+  //       rawData: filtered
+  //     });
+  //   }
+  //   setLoading(false);
+  // };
+
   const handleSearch = async () => {
     if (!searchData.postcode || !searchData.bedrooms || !searchData.people) {
-      alert('Please fill in all search fields');
+      alert("Please fill in all search fields");
       return;
     }
 
     setLoading(true);
-    const postcodePrefix = searchData.postcode.trim().toUpperCase().split(' ')[0];
-    const searchBedrooms = parseInt(searchData.bedrooms);
-    const searchPeople = parseInt(searchData.people);
-    
-    let filtered = allData.filter(item => {
-      const itemPostcodePrefix = item.postcode.trim().toUpperCase().split(' ')[0];
-      return itemPostcodePrefix === postcodePrefix && parseInt(item.bedrooms) === searchBedrooms && parseInt(item.people) === searchPeople;
-    });
-    let matchType = 'exact';
 
-    if (filtered.length === 0) {
-      filtered = allData.filter(item => {
-        const itemPostcodePrefix = item.postcode.trim().toUpperCase().split(' ')[0];
-        const bedroomMatch = Math.abs(parseInt(item.bedrooms) - searchBedrooms) <= 1;
-        const peopleMatch = Math.abs(parseInt(item.people) - searchPeople) <= 1;
-        return itemPostcodePrefix === postcodePrefix && bedroomMatch && peopleMatch;
-      });
-      matchType = 'flexible-same-area';
+    const postcodePrefix = searchData.postcode.trim().toUpperCase().split(" ")[0];
+    const postcodeArea = postcodePrefix.replace(/\d+$/, "");
+    const b = parseInt(searchData.bedrooms, 10);
+    const p = parseInt(searchData.people, 10);
+
+    const strategies: Array<"exact"|"flexible-same-area"|"nearby"|"flexible-nearby"> =
+      ["exact", "flexible-same-area", "nearby", "flexible-nearby"];
+
+    let found: any[] | null = null;
+    let matchType: string = "exact";
+
+    for (const s of strategies) {
+      const { data, error } = await fetchByStrategy(s, postcodePrefix, postcodeArea, b, p);
+      if (error) { console.error(error); continue; }
+      if (data && data.length > 0) {
+        found = data.map(mapRowToFront);
+        matchType = s;
+        break;
+      }
     }
 
-    if (filtered.length === 0) {
-      const postcodeArea = postcodePrefix.replace(/\d+$/, '');
-      filtered = allData.filter(item => {
-        const itemPostcodePrefix = item.postcode.trim().toUpperCase().split(' ')[0];
-        const itemPostcodeArea = itemPostcodePrefix.replace(/\d+$/, '');
-        return itemPostcodeArea === postcodeArea && parseInt(item.bedrooms) === searchBedrooms && parseInt(item.people) === searchPeople;
-      });
-      matchType = 'nearby';
+    if (!found) {
+      setResults({ count: 0, message: "No data found for these criteria. Be the first to contribute!" });
+      setLoading(false);
+      return;
     }
 
-    if (filtered.length === 0) {
-      const postcodeArea = postcodePrefix.replace(/\d+$/, '');
-      filtered = allData.filter(item => {
-        const itemPostcodePrefix = item.postcode.trim().toUpperCase().split(' ')[0];
-        const itemPostcodeArea = itemPostcodePrefix.replace(/\d+$/, '');
-        const bedroomMatch = Math.abs(parseInt(item.bedrooms) - searchBedrooms) <= 1;
-        const peopleMatch = Math.abs(parseInt(item.people) - searchPeople) <= 1;
-        return itemPostcodeArea === postcodeArea && bedroomMatch && peopleMatch;
-      });
-      matchType = 'flexible-nearby';
-    }
-
-    if (filtered.length === 0) {
-      setResults({ count: 0, message: 'No data found for these criteria. Be the first to contribute!' });
-    } else {
-      const calculateStats = (field) => {
-        const values = filtered.map(item => {
+    // 统计函数复用你原本的口径（perPerson 时乘以 people）
+    const calculateStats = (field: string) => {
+      const values = found!
+        .map((item) => {
           const cost = parseFloat(item[field]) || 0;
-          return item.costType === 'perPerson' ? cost * parseInt(item.people) : cost;
-        }).filter(v => v > 0);
-        if (values.length === 0) return null;
-        const sum = values.reduce((a, b) => a + b, 0);
-        return { avg: sum / values.length, min: Math.min(...values), max: Math.max(...values), count: values.length };
-      };
+          return item.costType === "perPerson" ? cost * parseInt(item.people) : cost;
+        })
+        .filter((v) => v > 0);
+      if (values.length === 0) return null;
+      const sum = values.reduce((a, b) => a + b, 0);
+      return { avg: sum / values.length, min: Math.min(...values), max: Math.max(...values), count: values.length };
+    };
 
-      const getProviders = (field) => {
-        const providers = filtered.map(item => item[field]).filter(p => p && p.trim() !== '');
-        const counts = {};
-        providers.forEach(p => counts[p] = (counts[p] || 0) + 1);
-        return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, count]) => ({ name, count }));
-      };
+    const getProviders = (field: string) => {
+      const providers = found!.map((item) => item[field]).filter((p) => p && String(p).trim() !== "");
+      const counts: Record<string, number> = {};
+      providers.forEach((p: string) => (counts[p] = (counts[p] || 0) + 1));
+      return Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([name, count]) => ({ name, count }));
+    };
 
-      const getMostRecentTimestamp = () => {
-        const timestamps = filtered.map(item => item.timestamp).filter(t => t);
-        return timestamps.length > 0 ? Math.max(...timestamps) : null;
-      };
+    const getMostRecentTimestamp = () => {
+      const timestamps = found!.map((item) => item.timestamp).filter(Boolean);
+      return timestamps.length > 0 ? Math.max(...(timestamps as number[])) : null;
+    };
 
-      const elec = calculateStats('electricityCost');
-      const water = calculateStats('waterCost');
-      const broad = calculateStats('broadbandCost');
-      const gas = calculateStats('gasCost');
+    const elec = calculateStats("electricityCost");
+    const water = calculateStats("waterCost");
+    const broad = calculateStats("broadbandCost");
+    const gas = calculateStats("gasCost");
 
-      setResults({
-        count: filtered.length, matchType, mostRecent: getMostRecentTimestamp(),
-        stats: { electricity: elec, water: water, broadband: broad, gas: gas },
-        providers: {
-          electricity: getProviders('electricityProvider'), water: getProviders('waterProvider'),
-          broadband: getProviders('broadbandProvider'), gas: getProviders('gasProvider')
-        },
-        total: (elec?.avg || 0) + (water?.avg || 0) + (broad?.avg || 0) + (gas?.avg || 0),
-        rawData: filtered
-      });
-    }
+    setResults({
+      count: found.length,
+      matchType,
+      mostRecent: getMostRecentTimestamp(),
+      stats: { electricity: elec, water, broadband: broad, gas },
+      providers: {
+        electricity: getProviders("electricityProvider"),
+        water: getProviders("waterProvider"),
+        broadband: getProviders("broadbandProvider"),
+        gas: getProviders("gasProvider"),
+      },
+      total: (elec?.avg || 0) + (water?.avg || 0) + (broad?.avg || 0) + (gas?.avg || 0),
+      rawData: found,
+    });
+
     setLoading(false);
   };
 
-  const handleReport = async (entry) => {
-    const reason = prompt('Please describe why you think this data is incorrect:');
+
+  // const handleReport = async (entry) => {
+  //   const reason = prompt('Please describe why you think this data is incorrect:');
+  //   if (!reason) return;
+  //   try {
+  //     const reportKey = `report:${entry.storageKey}_${Date.now()}`;
+  //     await window.storage.set(reportKey, JSON.stringify({ dataKey: entry.storageKey, reason, timestamp: Date.now(), reportedData: entry }));
+  //     alert('Thank you for your report. We will review this data.');
+  //     setShowReportModal(false);
+  //   } catch (error) {
+  //     alert('Error submitting report. Please try again.');
+  //   }
+  // };
+
+  const handleReport = async (entry: any) => {
+    const reason = prompt("Please describe why you think this data is incorrect:");
     if (!reason) return;
-    try {
-      const reportKey = `report:${entry.storageKey}_${Date.now()}`;
-      await window.storage.set(reportKey, JSON.stringify({ dataKey: entry.storageKey, reason, timestamp: Date.now(), reportedData: entry }));
-      alert('Thank you for your report. We will review this data.');
-      setShowReportModal(false);
-    } catch (error) {
-      alert('Error submitting report. Please try again.');
+
+    // entry 是我们刚才 map 过的前端行对象，其中含有 id
+    const payload = {
+      bill_id: entry.id,                 // 需要你在 Supabase 有 reports.bill_id 外键
+      reason,
+      reported_payload: entry,           // 便于后台审核查看原始字段
+    };
+
+    const { error } = await supabase.from("reports").insert(payload);
+    if (error) {
+      console.error(error);
+      alert("Error submitting report. Please try again.");
+      return;
     }
+
+    alert("Thank you for your report. We will review this data.");
+    setShowReportModal(false);
   };
+
+
+  // const handleSubmit = async () => {
+  //   if (!submitData.postcode || !submitData.bedrooms || !submitData.people) {
+  //     alert('Please fill in postcode, bedrooms, and number of people');
+  //     return;
+  //   }
+  //   if (!Object.values(selectedBills).some(v => v)) {
+  //     alert('Please select at least one bill type to contribute');
+  //     return;
+  //   }
+
+  //   const validationErrors = [];
+  //   if (selectedBills.electricity && submitData.electricityCost && !validateCost('electricityCost', submitData.electricityCost)) {
+  //     validationErrors.push(`Electricity: £${validationRanges.electricityCost.min}-£${validationRanges.electricityCost.max}`);
+  //   }
+  //   if (selectedBills.water && submitData.waterCost && !validateCost('waterCost', submitData.waterCost)) {
+  //     validationErrors.push(`Water: £${validationRanges.waterCost.min}-£${validationRanges.waterCost.max}`);
+  //   }
+  //   if (selectedBills.broadband && submitData.broadbandCost && !validateCost('broadbandCost', submitData.broadbandCost)) {
+  //     validationErrors.push(`Broadband: £${validationRanges.broadbandCost.min}-£${validationRanges.broadbandCost.max}`);
+  //   }
+  //   if (selectedBills.gas && submitData.gasCost && !validateCost('gasCost', submitData.gasCost)) {
+  //     validationErrors.push(`Gas: £${validationRanges.gasCost.min}-£${validationRanges.gasCost.max}`);
+  //   }
+  //   if (validationErrors.length > 0) {
+  //     alert('Please check the following:\n\n' + validationErrors.join('\n'));
+  //     return;
+  //   }
+
+  //   try {
+  //     const timestamp = Date.now();
+  //     const key = `bill:${submitData.postcode.replace(/\s+/g, '')}_${timestamp}`;
+  //     const dataToSubmit = { postcode: submitData.postcode, bedrooms: submitData.bedrooms, people: submitData.people, costType: submitData.costType, timestamp };
+  //     if (selectedBills.electricity && submitData.electricityCost) {
+  //       dataToSubmit.electricityCost = submitData.electricityCost;
+  //       dataToSubmit.electricityProvider = submitData.electricityProvider;
+  //     }
+  //     if (selectedBills.water && submitData.waterCost) {
+  //       dataToSubmit.waterCost = submitData.waterCost;
+  //       dataToSubmit.waterProvider = submitData.waterProvider;
+  //     }
+  //     if (selectedBills.broadband && submitData.broadbandCost) {
+  //       dataToSubmit.broadbandCost = submitData.broadbandCost;
+  //       dataToSubmit.broadbandProvider = submitData.broadbandProvider;
+  //     }
+  //     if (selectedBills.gas && submitData.gasCost) {
+  //       dataToSubmit.gasCost = submitData.gasCost;
+  //       dataToSubmit.gasProvider = submitData.gasProvider;
+  //     }
+  //     await window.storage.set(key, JSON.stringify(dataToSubmit));
+  //     setSubmitSuccess(true);
+  //     setTimeout(() => setSubmitSuccess(false), 3000);
+  //     setSubmitData({ postcode: '', bedrooms: '', people: '', electricityCost: '', electricityProvider: '', waterCost: '', waterProvider: '', broadbandCost: '', broadbandProvider: '', gasCost: '', gasProvider: '', costType: 'total' });
+  //     setSelectedBills({ electricity: false, water: false, broadband: false, gas: false });
+  //     await loadAllData();
+  //   } catch (error) {
+  //     alert('Error submitting data. Please try again.');
+  //   }
+  // };
 
   const handleSubmit = async () => {
     if (!submitData.postcode || !submitData.bedrooms || !submitData.people) {
-      alert('Please fill in postcode, bedrooms, and number of people');
+      alert("Please fill in postcode, bedrooms, and number of people");
       return;
     }
-    if (!Object.values(selectedBills).some(v => v)) {
-      alert('Please select at least one bill type to contribute');
-      return;
-    }
-
-    const validationErrors = [];
-    if (selectedBills.electricity && submitData.electricityCost && !validateCost('electricityCost', submitData.electricityCost)) {
-      validationErrors.push(`Electricity: £${validationRanges.electricityCost.min}-£${validationRanges.electricityCost.max}`);
-    }
-    if (selectedBills.water && submitData.waterCost && !validateCost('waterCost', submitData.waterCost)) {
-      validationErrors.push(`Water: £${validationRanges.waterCost.min}-£${validationRanges.waterCost.max}`);
-    }
-    if (selectedBills.broadband && submitData.broadbandCost && !validateCost('broadbandCost', submitData.broadbandCost)) {
-      validationErrors.push(`Broadband: £${validationRanges.broadbandCost.min}-£${validationRanges.broadbandCost.max}`);
-    }
-    if (selectedBills.gas && submitData.gasCost && !validateCost('gasCost', submitData.gasCost)) {
-      validationErrors.push(`Gas: £${validationRanges.gasCost.min}-£${validationRanges.gasCost.max}`);
-    }
-    if (validationErrors.length > 0) {
-      alert('Please check the following:\n\n' + validationErrors.join('\n'));
+    if (!Object.values(selectedBills).some((v) => v)) {
+      alert("Please select at least one bill type to contribute");
       return;
     }
 
-    try {
-      const timestamp = Date.now();
-      const key = `bill:${submitData.postcode.replace(/\s+/g, '')}_${timestamp}`;
-      const dataToSubmit = { postcode: submitData.postcode, bedrooms: submitData.bedrooms, people: submitData.people, costType: submitData.costType, timestamp };
-      if (selectedBills.electricity && submitData.electricityCost) {
-        dataToSubmit.electricityCost = submitData.electricityCost;
-        dataToSubmit.electricityProvider = submitData.electricityProvider;
-      }
-      if (selectedBills.water && submitData.waterCost) {
-        dataToSubmit.waterCost = submitData.waterCost;
-        dataToSubmit.waterProvider = submitData.waterProvider;
-      }
-      if (selectedBills.broadband && submitData.broadbandCost) {
-        dataToSubmit.broadbandCost = submitData.broadbandCost;
-        dataToSubmit.broadbandProvider = submitData.broadbandProvider;
-      }
-      if (selectedBills.gas && submitData.gasCost) {
-        dataToSubmit.gasCost = submitData.gasCost;
-        dataToSubmit.gasProvider = submitData.gasProvider;
-      }
-      await window.storage.set(key, JSON.stringify(dataToSubmit));
-      setSubmitSuccess(true);
-      setTimeout(() => setSubmitSuccess(false), 3000);
-      setSubmitData({ postcode: '', bedrooms: '', people: '', electricityCost: '', electricityProvider: '', waterCost: '', waterProvider: '', broadbandCost: '', broadbandProvider: '', gasCost: '', gasProvider: '', costType: 'total' });
-      setSelectedBills({ electricity: false, water: false, broadband: false, gas: false });
-      await loadAllData();
-    } catch (error) {
-      alert('Error submitting data. Please try again.');
+    // 维持你原本的校验
+    const validationErrors: string[] = [];
+    if (selectedBills.electricity && submitData.electricityCost && !(parseFloat(submitData.electricityCost) >= 10 && parseFloat(submitData.electricityCost) <= 500)) {
+      validationErrors.push("Electricity: £10-£500");
     }
+    if (selectedBills.water && submitData.waterCost && !(parseFloat(submitData.waterCost) >= 10 && parseFloat(submitData.waterCost) <= 200)) {
+      validationErrors.push("Water: £10-£200");
+    }
+    if (selectedBills.broadband && submitData.broadbandCost && !(parseFloat(submitData.broadbandCost) >= 15 && parseFloat(submitData.broadbandCost) <= 150)) {
+      validationErrors.push("Broadband: £15-£150");
+    }
+    if (selectedBills.gas && submitData.gasCost && !(parseFloat(submitData.gasCost) >= 10 && parseFloat(submitData.gasCost) <= 500)) {
+      validationErrors.push("Gas: £10-£500");
+    }
+    if (validationErrors.length) {
+      alert("Please check the following:\n\n" + validationErrors.join("\n"));
+      return;
+    }
+
+    // 构造与数据库列对齐的 payload
+    const payload: any = {
+      postcode: submitData.postcode.trim(),
+      bedrooms: Number(submitData.bedrooms),
+      people: Number(submitData.people),
+      cost_type: submitData.costType, // 'total' | 'perPerson'
+    };
+
+    if (selectedBills.electricity && submitData.electricityCost) {
+      payload.electricity_cost = Number(submitData.electricityCost);
+      payload.electricity_provider = submitData.electricityProvider || null;
+    }
+    if (selectedBills.water && submitData.waterCost) {
+      payload.water_cost = Number(submitData.waterCost);
+      payload.water_provider = submitData.waterProvider || null;
+    }
+    if (selectedBills.broadband && submitData.broadbandCost) {
+      payload.broadband_cost = Number(submitData.broadbandCost);
+      payload.broadband_provider = submitData.broadbandProvider || null;
+    }
+    if (selectedBills.gas && submitData.gasCost) {
+      payload.gas_cost = Number(submitData.gasCost);
+      payload.gas_provider = submitData.gasProvider || null;
+    }
+
+    const { error } = await supabase.from("bills").insert(payload);
+    if (error) {
+      console.error(error);
+      alert("Error submitting data. Please try again.");
+      return;
+    }
+
+    setSubmitSuccess(true);
+    setTimeout(() => setSubmitSuccess(false), 3000);
+
+    setSubmitData({
+      postcode: "",
+      bedrooms: "",
+      people: "",
+      electricityCost: "",
+      electricityProvider: "",
+      waterCost: "",
+      waterProvider: "",
+      broadbandCost: "",
+      broadbandProvider: "",
+      gasCost: "",
+      gasProvider: "",
+      costType: "total",
+    });
+    setSelectedBills({ electricity: false, water: false, broadband: false, gas: false });
+
+    await loadAllData(); // 刷新计数
   };
+
 
   const getMatchTypeMessage = (matchType) => {
     switch (matchType) {
