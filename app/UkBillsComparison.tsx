@@ -612,7 +612,8 @@ export default function UKBillsComparison() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="max-w-6xl mx-auto p-6">
+      {/* <div className="max-w-6xl mx-auto p-6"> */}
+      <div className="max-w-6xl mx-auto p-4 sm:p-6">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">UK Bills Comparison</h1>
           <p className="text-gray-600">Compare household bills across the UK and find fair pricing</p>
@@ -629,7 +630,8 @@ export default function UKBillsComparison() {
         </div>
 
         {activeTab === 'search' && (
-          <div className="bg-white rounded-xl shadow-lg p-8">
+          // <div className="bg-white rounded-xl shadow-lg p-8">
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 md:p-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Find Average Bills in Your Area</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div>
@@ -780,7 +782,8 @@ export default function UKBillsComparison() {
         )}
 
         {showReportModal && results && results.rawData && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          // <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-4 sm:p-6">
             <div className="bg-white rounded-xl max-w-2xl w-full max-h-96 overflow-y-auto p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold">Report Suspicious Data</h3>
