@@ -278,16 +278,54 @@ export default function UKBillsComparison() {
     }
 
     // 统计函数复用你原本的口径（perPerson 时乘以 people）
+    // const calculateStats = (field: string) => {
+    //   const values = found!
+    //     .map((item) => {
+    //       const cost = parseFloat(item[field]) || 0;
+    //       return item.costType === "perPerson" ? cost * parseInt(item.people) : cost;
+    //     })
+    //     .filter((v) => v > 0);
+    //   if (values.length === 0) return null;
+    //   const sum = values.reduce((a, b) => a + b, 0);
+    //   return { avg: sum / values.length, min: Math.min(...values), max: Math.max(...values), count: values.length };
+    // };
+
     const calculateStats = (field: string) => {
       const values = found!
         .map((item) => {
           const cost = parseFloat(item[field]) || 0;
-          return item.costType === "perPerson" ? cost * parseInt(item.people) : cost;
+          if (cost === 0) return null;
+          
+          // Normalize: convert to total household cost first
+          const totalCost = item.costType === "perPerson" ? cost * parseInt(item.people) : cost;
+          
+          // Then normalize by people to get "per person"
+          const perPerson = totalCost / parseInt(item.people);
+          
+          return { perPerson, people: parseInt(item.people) };
         })
-        .filter((v) => v > 0);
+        .filter((v) => v !== null);
+        
       if (values.length === 0) return null;
-      const sum = values.reduce((a, b) => a + b, 0);
-      return { avg: sum / values.length, min: Math.min(...values), max: Math.max(...values), count: values.length };
+      
+      // Calculate stats on per-person values
+      const perPersonValues = values.map(v => v!.perPerson);
+      const sum = perPersonValues.reduce((a, b) => a + b, 0);
+      const avgPerPerson = sum / perPersonValues.length;
+      
+      // For display, convert back to user's household size
+      const searchPeople = parseInt(searchData.people);
+      const avgTotal = avgPerPerson * searchPeople;
+      const minTotal = Math.min(...perPersonValues) * searchPeople;
+      const maxTotal = Math.max(...perPersonValues) * searchPeople;
+      
+      return { 
+        avg: avgTotal, 
+        min: minTotal, 
+        max: maxTotal, 
+        count: values.length,
+        avgPerPerson // keep for reference if needed
+      };
     };
 
     const getProviders = (field: string) => {
@@ -518,6 +556,32 @@ export default function UKBillsComparison() {
     }
   };
 
+  // const BillCard = ({ title, icon: Icon, color, stats, providers }) => (
+  //   <div className={`p-6 bg-gradient-to-br ${color} rounded-lg ${!stats && 'opacity-50'}`}>
+  //     <div className="flex items-center justify-between mb-2">
+  //       <div className="flex items-center gap-2">
+  //         <Icon className="text-gray-800" size={24} />
+  //         <h3 className="font-semibold text-gray-900">{title}</h3>
+  //       </div>
+  //       {stats && <p className="text-2xl font-bold text-gray-900">£{stats.avg.toFixed(2)}</p>}
+  //     </div>
+  //     {stats ? (
+  //       <>
+  //         <div className="mt-2">
+  //           <p className="text-sm text-gray-700">Range: <span className="font-semibold">£{stats.min.toFixed(2)} - £{stats.max.toFixed(2)}</span></p>
+  //           <p className="text-xs text-gray-600 mt-1">Based on {stats.count} household{stats.count > 1 ? 's' : ''}</p>
+  //         </div>
+  //         {providers && providers.length > 0 && (
+  //           <div className="mt-3 text-sm text-gray-600">
+  //             <p className="font-medium">Top providers:</p>
+  //             {providers.map((p, i) => <p key={i}>• {p.name} ({p.count})</p>)}
+  //           </div>
+  //         )}
+  //       </>
+  //     ) : <p className="text-sm text-gray-600 mt-2">No data available</p>}
+  //   </div>
+  // );
+
   const BillCard = ({ title, icon: Icon, color, stats, providers }) => (
     <div className={`p-6 bg-gradient-to-br ${color} rounded-lg ${!stats && 'opacity-50'}`}>
       <div className="flex items-center justify-between mb-2">
@@ -532,6 +596,8 @@ export default function UKBillsComparison() {
           <div className="mt-2">
             <p className="text-sm text-gray-700">Range: <span className="font-semibold">£{stats.min.toFixed(2)} - £{stats.max.toFixed(2)}</span></p>
             <p className="text-xs text-gray-600 mt-1">Based on {stats.count} household{stats.count > 1 ? 's' : ''}</p>
+            {/* ADD THIS LINE */}
+            <p className="text-xs text-gray-500 mt-1 italic">Normalized for your property size</p>
           </div>
           {providers && providers.length > 0 && (
             <div className="mt-3 text-sm text-gray-600">
@@ -552,7 +618,8 @@ export default function UKBillsComparison() {
           <p className="text-gray-600">Compare household bills across the UK and find fair pricing</p>
         </div>
 
-        <div className="flex gap-4 mb-6">
+        {/* <div className="flex gap-4 mb-6"> */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <button onClick={() => setActiveTab('search')} className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all ${activeTab === 'search' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
             <Search className="inline mr-2" size={20} />Search Bills
           </button>
@@ -592,6 +659,11 @@ export default function UKBillsComparison() {
                       <div className="p-4 bg-blue-50 rounded-lg">
                         <p className="text-sm text-gray-600"><span className="font-bold text-blue-600">{results.count}</span> household(s) found <span className="mx-2">•</span> {getMatchTypeMessage(results.matchType)}</p>
                       </div>
+                      <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                        <p className="text-xs text-purple-800">
+                          <strong>Smart Comparison:</strong> Costs are normalized per person, then adjusted to your household size ({searchData.people} people) for fair comparison across different occupancies.
+                        </p>
+                      </div>
                       {results.mostRecent && (
                         <div className="p-3 bg-gray-50 rounded-lg flex items-center gap-2 text-sm text-gray-600">
                           <Clock size={16} /><span>Last updated: {getTimeSince(results.mostRecent)}</span>
@@ -607,13 +679,29 @@ export default function UKBillsComparison() {
                       <BillCard title="Broadband" icon={Wifi} color="from-purple-50 to-purple-100" stats={results.stats.broadband} providers={results.providers.broadband} />
                       <BillCard title="Gas" icon={Flame} color="from-orange-50 to-orange-100" stats={results.stats.gas} providers={results.providers.gas} />
                     </div>
-                    {results.total > 0 && (
+                    {/* {results.total > 0 && (
                       <div className="p-6 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-lg">
                         <h3 className="text-xl font-bold mb-2">Total Average Monthly Bills</h3>
                         <p className="text-4xl font-bold">£{results.total.toFixed(2)}</p>
                         <p className="text-sm mt-2 opacity-90">For utilities with available data</p>
                       </div>
-                    )}
+                    )} */}
+                    {results.total > 0 && (
+                    <>
+                      <div className="p-6 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-lg">
+                        <h3 className="text-xl font-bold mb-2">Total Average Monthly Bills</h3>
+                        <p className="text-4xl font-bold">£{results.total.toFixed(2)}</p>
+                        <p className="text-sm mt-2 opacity-90">For utilities with available data</p>
+                      </div>
+                      <button 
+                        onClick={() => setActiveTab('submit')} 
+                        className="w-full mt-4 p-3 bg-white border-2 border-blue-500 text-blue-600 rounded-lg font-semibold hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Upload size={18} />
+                        Help others by contributing your bills
+                      </button>
+                    </>
+                  )}
                   </>
                 )}
               </div>
@@ -628,7 +716,8 @@ export default function UKBillsComparison() {
             {submitSuccess && <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800">✓ Thank you! Your data has been submitted successfully.</div>}
             <div className="mb-6">
               <h3 className="font-semibold text-gray-900 mb-4">Property Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Postcode *</label>
                   <input type="text" placeholder="e.g., SW1A 1AA" value={submitData.postcode} onChange={(e) => setSubmitData({...submitData, postcode: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
@@ -645,7 +734,8 @@ export default function UKBillsComparison() {
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Cost Type</label>
 
-                <div className="flex gap-4">
+                {/* <div className="flex gap-4"> */}
+                <div className="flex flex-col sm:flex-row gap-4">
                   <label className="flex items-center text-gray-800"><input type="radio" value="total" checked={submitData.costType === 'total'} onChange={(e) => setSubmitData({...submitData, costType: e.target.value})} className="mr-2 accent-blue-600 text-gray-400" />Total household cost</label>
                   <label className="flex items-center text-gray-800"><input type="radio" value="perPerson" checked={submitData.costType === 'perPerson'} onChange={(e) => setSubmitData({...submitData, costType: e.target.value})} className="mr-2 accent-blue-600 text-gray-400" />Per person cost</label>
                 </div>
@@ -667,7 +757,8 @@ export default function UKBillsComparison() {
                   {selectedBills[key] && (
                     <div className="pl-8">
                       <p className="text-xs text-gray-700 mb-3">Valid range: £{validationRanges[field].min}-£{validationRanges[field].max} per month</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4"> */}
+                      <div className="grid grid-cols-1 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Monthly Cost (£)</label>
                           <input type="number" step="0.01" placeholder="e.g., 85.50" value={submitData[field]} onChange={(e) => setSubmitData({...submitData, [field]: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
