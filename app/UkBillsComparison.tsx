@@ -719,7 +719,7 @@ export default function UKBillsComparison() {
                 {/* {results.count === 0 ? (
                   <div className="text-center py-8"><p className="text-gray-600 text-lg">{results.message}</p></div>
                 ) : ( */}
-                {results.count === 0 ? (
+                {/* {results.count === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-600 text-lg mb-4">{results.message}</p>
                     <button 
@@ -729,7 +729,42 @@ export default function UKBillsComparison() {
                       Contribute Now
                     </button>
                   </div>
-                ) : (
+                ) : ( */}
+                {results.count === 0 ? (
+                <>
+                  <div className="text-center py-8">
+                    <p className="text-gray-600 text-lg mb-4">{results.message}</p>
+                    <button 
+                      onClick={() => setActiveTab('submit')} 
+                      className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                    >
+                      Contribute Now
+                    </button>
+                  </div>
+                  {results.showUKAverage && (
+                    <>
+                      <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-sm text-amber-800">
+                          <strong>UK Average:</strong> No exact matches found, but here's the UK-wide average normalized for your household size ({searchData.people} people).
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <BillCard title="Electricity" icon={Zap} color="from-yellow-50 to-yellow-100" stats={results.stats.electricity} providers={results.providers.electricity} />
+                        <BillCard title="Water" icon={Droplets} color="from-blue-50 to-blue-100" stats={results.stats.water} providers={results.providers.water} />
+                        <BillCard title="Broadband" icon={Wifi} color="from-purple-50 to-purple-100" stats={results.stats.broadband} providers={results.providers.broadband} />
+                        <BillCard title="Gas" icon={Flame} color="from-orange-50 to-orange-100" stats={results.stats.gas} providers={results.providers.gas} />
+                      </div>
+                      {results.total > 0 && (
+                        <div className="p-6 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg">
+                          <h3 className="text-xl font-bold mb-2">UK Average Monthly Bills</h3>
+                          <p className="text-4xl font-bold">£{results.total.toFixed(2)}</p>
+                          <p className="text-sm mt-2 opacity-90">Based on all UK data, normalized for your property</p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              ) : (
                   <>
                     <div className="mb-6 space-y-3">
                       <div className="p-4 bg-blue-50 rounded-lg">
