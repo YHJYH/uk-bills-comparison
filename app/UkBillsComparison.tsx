@@ -653,8 +653,19 @@ export default function UKBillsComparison() {
 
             {results && (
               <div className="mt-8">
-                {results.count === 0 ? (
+                {/* {results.count === 0 ? (
                   <div className="text-center py-8"><p className="text-gray-600 text-lg">{results.message}</p></div>
+                ) : ( */}
+                {results.count === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-600 text-lg mb-4">{results.message}</p>
+                    <button 
+                      onClick={() => setActiveTab('submit')} 
+                      className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                    >
+                      Contribute Now
+                    </button>
+                  </div>
                 ) : (
                   <>
                     <div className="mb-6 space-y-3">
