@@ -271,8 +271,71 @@ export default function UKBillsComparison() {
       }
     }
 
+    // if (!found) {
+    //   setResults({ count: 0, message: "No data found for these criteria. Be the first to contribute!" });
+    //   setLoading(false);
+    //   return;
+    // }
+
     if (!found) {
-      setResults({ count: 0, message: "No data found for these criteria. Be the first to contribute!" });
+      // Calculate UK average from all data
+      const allBillsResponse = await supabase.from("bills").select("*");
+      const allBills = allBillsResponse.data ? allBillsResponse.data.map(mapRowToFront) : [];
+      
+      const calculateStatsForAll = (field: string) => {
+        const values = allBills
+          .map((item) => {
+            const cost = parseFloat(item[field]) || 0;
+            if (cost === 0) return null;
+            const totalCost = item.costType === "perPerson" ? cost * parseInt(item.people) : cost;
+            const perPerson = totalCost / parseInt(item.people);
+            return { perPerson, people: parseInt(item.people) };
+          })
+          .filter((v) => v !== null);
+          
+        if (values.length === 0) return null;
+        
+        const perPersonValues = values.map(v => v!.perPerson);
+        const sum = perPersonValues.reduce((a, b) => a + b, 0);
+        const avgPerPerson = sum / perPersonValues.length;
+        
+        const searchPeople = parseInt(searchData.people);
+        const avgTotal = avgPerPerson * searchPeople;
+        const minTotal = Math.min(...perPersonValues) * searchPeople;
+        const maxTotal = Math.max(...perPersonValues) * searchPeople;
+        
+        return { avg: avgTotal, min: minTotal, max: maxTotal, count: values.length };
+      };
+      
+      const getProvidersForAll = (field: string) => {
+        const providers = allBills.map((item) => item[field]).filter((p) => p && String(p).trim() !== "");
+        const counts: Record<string, number> = {};
+        providers.forEach((p: string) => (counts[p] = (counts[p] || 0) + 1));
+        return Object.entries(counts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([name, count]) => ({ name, count }));
+      };
+      
+      const elecAll = calculateStatsForAll("electricityCost");
+      const waterAll = calculateStatsForAll("waterCost");
+      const broadAll = calculateStatsForAll("broadbandCost");
+      const gasAll = calculateStatsForAll("gasCost");
+      
+      setResults({
+        count: 0,
+        message: "No data found for these criteria. Be the first to contribute!",
+        showUKAverage: true,
+        stats: { electricity: elecAll, water: waterAll, broadband: broadAll, gas: gasAll },
+        providers: {
+          electricity: getProvidersForAll("electricityProvider"),
+          water: getProvidersForAll("waterProvider"),
+          broadband: getProvidersForAll("broadbandProvider"),
+          gas: getProvidersForAll("gasProvider"),
+        },
+        total: (elecAll?.avg || 0) + (waterAll?.avg || 0) + (broadAll?.avg || 0) + (gasAll?.avg || 0),
+      });
+      
       setLoading(false);
       return;
     }
