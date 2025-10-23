@@ -307,14 +307,32 @@ export default function UKBillsComparison() {
         return { avg: avgTotal, min: minTotal, max: maxTotal, count: values.length };
       };
       
+      // const getProvidersForAll = (field: string) => {
+      //   const providers = allBills.map((item) => item[field]).filter((p) => p && String(p).trim() !== "");
+      //   const counts: Record<string, number> = {};
+      //   providers.forEach((p: string) => (counts[p] = (counts[p] || 0) + 1));
+      //   return Object.entries(counts)
+      //     .sort((a, b) => b[1] - a[1])
+      //     .slice(0, 3)
+      //     .map(([name, count]) => ({ name, count }));
+      // };
       const getProvidersForAll = (field: string) => {
         const providers = allBills.map((item) => item[field]).filter((p) => p && String(p).trim() !== "");
         const counts: Record<string, number> = {};
-        providers.forEach((p: string) => (counts[p] = (counts[p] || 0) + 1));
+        const nameMapping: Record<string, string> = {};
+        
+        providers.forEach((p: string) => {
+          const lowerP = p.toLowerCase();
+          if (!nameMapping[lowerP]) {
+            nameMapping[lowerP] = p;
+          }
+          counts[lowerP] = (counts[lowerP] || 0) + 1;
+        });
+        
         return Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 3)
-          .map(([name, count]) => ({ name, count }));
+          .map(([lowerName, count]) => ({ name: nameMapping[lowerName], count }));
       };
       
       const elecAll = calculateStatsForAll("electricityCost");
@@ -391,14 +409,33 @@ export default function UKBillsComparison() {
       };
     };
 
+    // const getProviders = (field: string) => {
+    //   const providers = found!.map((item) => item[field]).filter((p) => p && String(p).trim() !== "");
+    //   const counts: Record<string, number> = {};
+    //   providers.forEach((p: string) => (counts[p] = (counts[p] || 0) + 1));
+    //   return Object.entries(counts)
+    //     .sort((a, b) => b[1] - a[1])
+    //     .slice(0, 3)
+    //     .map(([name, count]) => ({ name, count }));
+    // };
+
     const getProviders = (field: string) => {
       const providers = found!.map((item) => item[field]).filter((p) => p && String(p).trim() !== "");
       const counts: Record<string, number> = {};
-      providers.forEach((p: string) => (counts[p] = (counts[p] || 0) + 1));
+      const nameMapping: Record<string, string> = {}; // Store original casing
+      
+      providers.forEach((p: string) => {
+        const lowerP = p.toLowerCase();
+        if (!nameMapping[lowerP]) {
+          nameMapping[lowerP] = p; // Store first occurrence's casing
+        }
+        counts[lowerP] = (counts[lowerP] || 0) + 1;
+      });
+      
       return Object.entries(counts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
-        .map(([name, count]) => ({ name, count }));
+        .map(([lowerName, count]) => ({ name: nameMapping[lowerName], count }));
     };
 
     const getMostRecentTimestamp = () => {
